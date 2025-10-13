@@ -13,7 +13,7 @@ namespace Nomnom.CodeGenUtils {
                 .OfType<MethodDeclarationSyntax>()
                 .Where(m => m.Identifier.Text.StartsWith("__getTypeName") || m.Identifier.Text.StartsWith("__initializeVariables") ||
                             m.Identifier.Text.StartsWith("InitializeRPCS_") || m.Identifier.Text.StartsWith("__rpc_handler_"));
-            var newRoot = root.RemoveNodes(methodsToRemove, SyntaxRemoveOptions.KeepNoTrivia);
+            var newRoot = root.RemoveNodes(methodsToRemove, SyntaxRemoveOptions.KeepNoTrivia)!;
             return newRoot;
         }
 
@@ -89,7 +89,7 @@ namespace Nomnom.CodeGenUtils {
 
                     // replace old methods with new methods
                     root = root.ReplaceNodes(methodsToReplace.Select(x => x.Item1), (x, y) => methodsToReplace.First(z => z.Item1 == x).Item2);
-                    root = root.RemoveNodes(nodesToRemove, SyntaxRemoveOptions.KeepNoTrivia);
+                    root = root.RemoveNodes(nodesToRemove, SyntaxRemoveOptions.KeepNoTrivia)!;
 
                     // write the new code back to the file
                     var newCode = root.ToFullString();
