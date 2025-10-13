@@ -147,9 +147,9 @@ namespace Nomnom.CodeGenUtils {
 
             /*
              * Example:
-             * 		NetworkManager networkManager = base.NetworkManager;
-		     *      if ((object)networkManager != null && networkManager.IsListening)
-		     *      {
+             *      NetworkManager networkManager = base.NetworkManager;
+             *      if ((object)networkManager != null && networkManager.IsListening)
+             *      {
              */
             if (validStatements.Count == 2) {
                 var secondStatement = validStatements[1];
@@ -162,7 +162,6 @@ namespace Nomnom.CodeGenUtils {
                 // foreach (var child in childNodes) {
                 //     log($"[child] is {child.GetType().FullName}: {child}");
                 // }
-
                 if (childNodes.Length > 1) {
                     var secondChildNode = childNodes[1];
                     childNodes = secondChildNode.ChildNodes().ToArray();
@@ -184,7 +183,6 @@ namespace Nomnom.CodeGenUtils {
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
                             .WithBody(SyntaxFactory.Block(strippedIfStatement));
-                    
                         return newMethod;
                     } else {
                         var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
@@ -192,7 +190,6 @@ namespace Nomnom.CodeGenUtils {
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
                             .WithBody(nestedNodeIf.Statement as BlockSyntax);
-                    
                         return newMethod;
                     }
                 } else {
@@ -206,24 +203,24 @@ namespace Nomnom.CodeGenUtils {
                     var strippedIfStatement = StripIfStatement(thirdStatementIf, log);
                     log("<color=red>[error] not handled yet</color>");
                 }
-            } 
+            }
             /*
              * Example:
-             * 		NetworkManager networkManager = base.NetworkManager;
-		     *      if ((object)networkManager == null || !networkManager.IsListening)
-		     *      {
-			 *          return;
-		     *      }
-		     *      if (__rpc_exec_stage != __RpcExecStage.Client && (networkManager.IsServer || networkManager.IsHost))
-		     *      {
-			 *          ClientRpcParams clientRpcParams = default(ClientRpcParams);
-			 *          FastBufferWriter bufferWriter = __beginSendClientRpc(848048148u, clientRpcParams, RpcDelivery.Reliable);
-			 *          bufferWriter.WriteValueSafe(in setBool, default(FastBufferWriter.ForPrimitives));
-			 *          bufferWriter.WriteValueSafe(in playSecondaryAudios, default(FastBufferWriter.ForPrimitives));
-			 *          BytePacker.WriteValueBitPacked(bufferWriter, playerWhoTriggered);
-			 *          __endSendClientRpc(ref bufferWriter, 848048148u, clientRpcParams, RpcDelivery.Reliable);
-		     *      }
-		     *      if (__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost) || GameNetworkManager.Instance.localPlayerController == null || (playerWhoTriggered != -1 && (int)GameNetworkManager.Instance.localPlayerController.playerClientId == playerWhoTriggered))
+             *      NetworkManager networkManager = base.NetworkManager;
+             *      if ((object)networkManager == null || !networkManager.IsListening)
+             *      {
+             *          return;
+             *      }
+             *      if (__rpc_exec_stage != __RpcExecStage.Client && (networkManager.IsServer || networkManager.IsHost))
+             *      {
+             *          ClientRpcParams clientRpcParams = default(ClientRpcParams);
+             *          FastBufferWriter bufferWriter = __beginSendClientRpc(848048148u, clientRpcParams, RpcDelivery.Reliable);
+             *          bufferWriter.WriteValueSafe(in setBool, default(FastBufferWriter.ForPrimitives));
+             *          bufferWriter.WriteValueSafe(in playSecondaryAudios, default(FastBufferWriter.ForPrimitives));
+             *          BytePacker.WriteValueBitPacked(bufferWriter, playerWhoTriggered);
+             *          __endSendClientRpc(ref bufferWriter, 848048148u, clientRpcParams, RpcDelivery.Reliable);
+             *      }
+             *      if (__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost) || GameNetworkManager.Instance.localPlayerController == null || (playerWhoTriggered != -1 && (int)GameNetworkManager.Instance.localPlayerController.playerClientId == playerWhoTriggered))
              */
             else {
                 var fourthStatement = validStatements[3];
@@ -240,7 +237,6 @@ namespace Nomnom.CodeGenUtils {
                         .WithParameterList(methodDeclaration.ParameterList)
                         .WithAttributeLists(methodDeclaration.AttributeLists)
                         .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements.Prepend(strippedIfStatement))));
-                    
                     return newMethod;
                 } else {
                     var remainingStatements = validStatements.Skip(4).ToArray();
@@ -252,7 +248,6 @@ namespace Nomnom.CodeGenUtils {
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
                             .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements)));
-
                         return newMethod;
                     } else {
                         var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
@@ -260,7 +255,6 @@ namespace Nomnom.CodeGenUtils {
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
                             .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements).Prepend(fourthStatementIf.Statement)));
-
                         return newMethod;
                     }
                 }
