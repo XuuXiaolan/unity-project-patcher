@@ -10,7 +10,7 @@ using UnityEngine.Pool;
 namespace Nomnom.UnityProjectPatcher.UnityPackages {
     public static class PackagesUtility {
 #if UNITY_EDITOR
-        public static IEnumerable<FoundPackageInfo> GetGamePackages(UPPatcherSettings settings) {
+        public static IEnumerable<FoundDllInfo> GetGamePackages(UPPatcherSettings settings) {
             var ignoredPrefixes = settings.IgnoredDllPrefixes;
             var files = Directory.EnumerateFiles(settings.GameManagedPath!, "*.dll");
             var convertedFiles = files
@@ -126,15 +126,15 @@ namespace Nomnom.UnityProjectPatcher.UnityPackages {
             Debug.Log(sb.ToString());
 
             foreach (var package in exactMatches) {
-                yield return new FoundPackageInfo(package, PackageMatchType.Exact);
+                yield return new FoundDllInfo(package, PackageMatchType.Exact);
             }
 
             foreach (var package in possibleMatches.Except(matchesOverMaxDistance).Select(x => x.Item1)) {
-                yield return new FoundPackageInfo(package, PackageMatchType.Possible);
+                yield return new FoundDllInfo(package, PackageMatchType.Possible);
             }
 
             foreach (var package in matchesOverMaxDistance.Select(x => x.Item1)) {
-                yield return new FoundPackageInfo(package, PackageMatchType.Improbable);
+                yield return new FoundDllInfo(package, PackageMatchType.Improbable);
             }
         }
 #endif

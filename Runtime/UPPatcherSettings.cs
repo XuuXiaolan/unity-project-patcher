@@ -43,7 +43,7 @@ namespace Nomnom.UnityProjectPatcher {
         public IReadOnlyList<string> ScriptDllFoldersToCopy => _scriptDllFoldersToCopy;
         
         public IReadOnlyCollection<string> IgnoredDllPrefixes => _ignoredDllPrefixes;
-        public IReadOnlyCollection<FoundPackageInfo> ExactPackagesFound => _exactPackagesFound;
+        public IReadOnlyCollection<FoundDllInfo> ExactPackagesFound => _exactPackagesFound;
         public IReadOnlyCollection<GitPackageInfo> GitPackages => _gitPackages;
 
 #if UNITY_2020_3_OR_NEWER
@@ -83,9 +83,9 @@ namespace Nomnom.UnityProjectPatcher {
             "Unity.Services."
         };
 
-        [SerializeField] private List<FoundPackageInfo> _exactPackagesFound = new List<FoundPackageInfo>();
-        [SerializeField] private List<FoundPackageInfo> _possiblePackagesFound = new List<FoundPackageInfo>();
-        [SerializeField] private List<FoundPackageInfo> _improbablePackagesFound = new List<FoundPackageInfo>();
+        [SerializeField] private List<FoundDllInfo> _exactPackagesFound = new List<FoundDllInfo>();
+        [SerializeField] private List<FoundDllInfo> _possiblePackagesFound = new List<FoundDllInfo>();
+        [SerializeField] private List<FoundDllInfo> _improbablePackagesFound = new List<FoundDllInfo>();
         [SerializeField] private List<GitPackageInfo> _gitPackages = new List<GitPackageInfo>();
 
         private void GetGameName() {

@@ -3,7 +3,7 @@ using System.Linq;
 
 namespace Nomnom.UnityProjectPatcher.UnityPackages {
     [Serializable]
-    public struct FoundPackageInfo {
+    public struct FoundDllInfo {
         /*[ReadOnly]*/ public string name;
         /*[ReadOnly]*/ public string version;
 #if UNITY_2020_3_OR_NEWER
@@ -14,9 +14,9 @@ namespace Nomnom.UnityProjectPatcher.UnityPackages {
         /*[ReadOnly]*/ public PackageMatchType matchType;
         
 #if UNITY_2020_3_OR_NEWER
-        public FoundPackageInfo(string name, string version, FoundDependencyInfo[]? dependencies, PackageMatchType matchType) {
+        public FoundDllInfo(string name, string version, FoundDependencyInfo[]? dependencies, PackageMatchType matchType) {
 #else
-        public FoundPackageInfo(string name, string version, FoundDependencyInfo[] dependencies, PackageMatchType matchType) {
+        public FoundDllInfo(string name, string version, FoundDependencyInfo[] dependencies, PackageMatchType matchType) {
 #endif
             this.name = name;
             this.version = version;
@@ -25,7 +25,7 @@ namespace Nomnom.UnityProjectPatcher.UnityPackages {
         }
         
 #if UNITY_EDITOR
-        public FoundPackageInfo(UnityEditor.PackageManager.PackageInfo package, PackageMatchType matchType) {
+        public FoundDllInfo(UnityEditor.PackageManager.PackageInfo package, PackageMatchType matchType) {
             this.name = package.name;
             this.version = package.version;
             this.dependencies = package.dependencies.Select(x => new FoundDependencyInfo(x)).ToArray();
