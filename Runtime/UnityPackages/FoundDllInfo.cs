@@ -31,6 +31,13 @@ namespace Nomnom.UnityProjectPatcher.UnityPackages {
             this.dependencies = package.dependencies.Select(x => new FoundDependencyInfo(x)).ToArray();
             this.matchType = matchType;
         }
+
+        public FoundDllInfo(string name) {
+            this.name = name;
+            this.version = "0.0.0.0";
+            this.dependencies = new FoundDependencyInfo[0];
+            this.matchType = PackageMatchType.DLL;
+        }
 #endif
 
         public override string ToString() {
@@ -80,8 +87,7 @@ namespace Nomnom.UnityProjectPatcher.UnityPackages {
     }
 
     public enum PackageMatchType {
-        Exact,
-        Possible,
-        Improbable
+        Package,
+        DLL,
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -73,19 +73,21 @@ namespace Nomnom.UnityProjectPatcher {
 #endif
 
         [Header("Dlls")]
-        [SerializeField] private FolderMapping[] _dllsToCopy = Array.Empty<FolderMapping>();
+        [SerializeField] private List<FolderMapping> _dllsToCopy = new List<FolderMapping>();
         [SerializeField] private string[] _scriptDllFoldersToCopy = Array.Empty<string>();
 
         [Header("Packages")]
         [SerializeField] private string[] _ignoredDllPrefixes = new[] {
+            "Assembly-CSharp.dll",
+            "Mono.",
+            "mscorlib.dll",
+            "netstandard.dll",
             "System.",
+            "Unity.",
             "UnityEngine.",
-            "Unity.Services."
         };
 
         [SerializeField] private List<FoundDllInfo> _exactPackagesFound = new List<FoundDllInfo>();
-        [SerializeField] private List<FoundDllInfo> _possiblePackagesFound = new List<FoundDllInfo>();
-        [SerializeField] private List<FoundDllInfo> _improbablePackagesFound = new List<FoundDllInfo>();
         [SerializeField] private List<GitPackageInfo> _gitPackages = new List<GitPackageInfo>();
 
         private void GetGameName() {

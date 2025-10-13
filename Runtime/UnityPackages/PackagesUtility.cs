@@ -3,8 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using UnityEngine;
-using Quickenshtein;
+using System.Text;
+using UnityEditor.PackageManager;
 using UnityEngine.Pool;
 
 namespace Nomnom.UnityProjectPatcher.UnityPackages {
@@ -12,130 +12,92 @@ namespace Nomnom.UnityProjectPatcher.UnityPackages {
 #if UNITY_EDITOR
         public static IEnumerable<FoundDllInfo> GetGamePackages(UPPatcherSettings settings) {
             var ignoredPrefixes = settings.IgnoredDllPrefixes;
-            var files = Directory.EnumerateFiles(settings.GameManagedPath!, "*.dll");
-            var convertedFiles = files
-                .Where(x => !ignoredPrefixes.Any(x.StartsWith))
-                .Select(x =>
-                {
-                    var name = Path.GetFileNameWithoutExtension(x)
-                        .ToLowerInvariant();
-                    return (original: x, package: $"com.{name}");
-                }).ToArray();
+            var files = Directory.EnumerateFiles(settings.GameDataPath!, "*.dll", SearchOption.AllDirectories).ToArray();
 
-            UnityEditor.EditorUtility.DisplayProgressBar("Grabbing Packages", "Grabbing packages from the registry", 0);
+            var stringToMatch = @"\Library\PackageCache\";
+            var bytesToMatch = Encoding.UTF8.GetBytes(stringToMatch);
 
-            var packageRequest = UnityEditor.PackageManager.Client.SearchAll();
-            while (!packageRequest.IsCompleted) {
+            var matchEnd = (byte)'\\';
+
+            var triedIDs = new HashSet<string>();
+            var foundPackages = new Dictionary<string, PackageInfo>();
+
+            for (var i = 0; i < files.Length; i++) {
+                var file = files[i];
+                UnityEditor.EditorUtility.DisplayProgressBar("Grabbing Packages", $"Checking {file}...", i / (float)files.Length);
+
+                var match = 0;
+
+                while (true) {
+                    var dllData = File.ReadAllBytes(file);
+                    match = IndexOfSequence(match, dllData, bytesToMatch);
+
+                    if (match == -1) {
+                        var relativePath = Path.GetRelativePath(settings.GameManagedPath!, file);
+                        if (ignoredPrefixes.Any(relativePath.StartsWith))
+                            break;
+                        yield return new FoundDllInfo(relativePath);
+                        break;
+                    }
+
+                    ListPool<byte>.Get(out var packageNameBytes);
+
+                    match += bytesToMatch.Length;
+                    while (dllData[match] != matchEnd)
+                        packageNameBytes.Add(dllData[match++]);
+                    var packageID = Encoding.UTF8.GetString(packageNameBytes.ToArray());
+
+                    if (triedIDs.Contains(packageID))
+                        continue;
+                    triedIDs.Add(packageID);
+
+                    var singlePackageRequest = Client.Search(packageID);
+                    while (!singlePackageRequest.IsCompleted) ;
+                    if (singlePackageRequest.Result == null || singlePackageRequest.Result.Length != 1)
+                        continue;
+                    var package = singlePackageRequest.Result[0];
+                    if (package == null)
+                        continue;
+
+                    if (foundPackages.ContainsKey(package.name))
+                        continue;
+
+                    foreach (var dependency in package.dependencies)
+                        foundPackages.Remove(dependency.name);
+
+                    foundPackages[package.name] = package;
+                    break;
+                }
             }
+
+            foreach (var (name, package) in foundPackages.OrderBy(kvp => kvp.Key))
+                yield return new FoundDllInfo(package, PackageMatchType.Package);
 
             UnityEditor.EditorUtility.ClearProgressBar();
+        }
 
-            var packages = packageRequest.Result;
-            using var _ = ListPool<UnityEditor.PackageManager.PackageInfo>.Get(out var exactMatches);
-            using var __ = ListPool<(UnityEditor.PackageManager.PackageInfo, int)>.Get(out var possibleMatches);
-            foreach (var package in packages) {
-                if (convertedFiles.Any(x => x.package == package.name)) {
-                    exactMatches.Add(package);
-                    continue;
+        private static int IndexOfSequence(int start, byte[] content, byte[] sequence) {
+            if (start < 0)
+                throw new IndexOutOfRangeException("start < 0");
+            if (content.Length < sequence.Length)
+                return -1;
+
+            var lastPossibleMatch = content.Length - sequence.Length;
+            for (var i = start; i <= lastPossibleMatch; i++) {
+                var isMatch = true;
+
+                for (var j = 0; j < sequence.Length; j++) {
+                    var a = content[i + j];
+                    var b = sequence[j];
+                    if (a != b)
+                        isMatch = false;
                 }
 
-                // some edge case detections
-                if (package.name == "com.unity.netcode.gameobjects") {
-                    if (convertedFiles.Any(x => x.package.Contains("gameobjects", StringComparison.InvariantCulture))) {
-                        exactMatches.Add(package);
-                        continue;
-                    }
-                }
-
-                var closest = Enumerable.Select(
-                        convertedFiles,
-                        x => (x, getMinDistance(x.package, package.name))
-                    )
-                    .OrderBy(x => x.Item2)
-                    .FirstOrDefault();
-
-                if (closest.x.original is not null) {
-                    if (closest.Item2 == 0) {
-                        exactMatches.Add(package);
-                        continue;
-                    }
-
-                    possibleMatches.Add((package, closest.Item2));
-                }
+                if (isMatch)
+                    return i;
             }
 
-            const int maxDistance = 6;
-            var matchesOverMaxDistance = possibleMatches
-                .Where(x => x.Item2 > maxDistance)
-                .ToArray();
-
-            int getMinDistance(string dllPackageName, string sourcePackageName) {
-                var d1 = Levenshtein.GetDistance(dllPackageName, sourcePackageName);
-                var dllPackageNameWithoutLastTerm = dllPackageName[..(dllPackageName.LastIndexOf('.'))];
-                var d2 = Levenshtein.GetDistance(dllPackageNameWithoutLastTerm, sourcePackageName);
-                var sourcePackageNameNoDashes = sourcePackageName.Replace("-", string.Empty);
-                var d3 = Levenshtein.GetDistance(dllPackageName, sourcePackageNameNoDashes);
-                var d4 = Levenshtein.GetDistance(dllPackageNameWithoutLastTerm, sourcePackageNameNoDashes);
-                return Mathf.Min(d1, d2, d3, d4);
-            }
-
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Found packages for {settings.GameName} @ {settings.GameVersion} (<i>click for details</i>):");
-            sb.AppendLine();
-
-            if (exactMatches.Count > 0) {
-                sb.AppendLine($"<b>Found {exactMatches.Count} exact matches:</b>");
-                foreach (var package in exactMatches) {
-                    sb.AppendLine($" - {package.packageId} <color=#FFFFFF7F>(+{package.dependencies.Length} dependencies)</color>");
-
-                    // foreach (var dependency in package.dependencies) {
-                    //     sb.AppendLine($"   + <color=#FFFFFF7F>{dependency.name} @ {dependency.version}</color>");
-                    // }
-                }
-            }
-
-            // Debug.Log(sb.ToString());
-            // sb.Clear();
-
-            if (possibleMatches.Count > 0) {
-                if (exactMatches.Count > 0) {
-                    sb.AppendLine();
-                }
-
-                sb.AppendLine($"<b>Found {possibleMatches.Count - matchesOverMaxDistance.Length} possible matches:</b>");
-                foreach (var package in possibleMatches.OrderBy(x => x.Item2).Except(matchesOverMaxDistance)) {
-                    var t = package.Item2 / (float)maxDistance;
-                    var finalT = Mathf.Clamp(1f - t, 0.2f, 1f);
-
-                    var color = new Color(1, 1, 1, finalT);
-                    var hex = ColorUtility.ToHtmlStringRGBA(color);
-
-                    sb.AppendLine($" - <color=#{hex}> {package.Item1.packageId} ({Mathf.Clamp01(1f - t):P000})</color>");
-                }
-
-                if (matchesOverMaxDistance.Length > 0) {
-                    sb.AppendLine();
-                    sb.AppendLine($"<b>Found {matchesOverMaxDistance.Length} improbable matches:</b>");
-                    foreach (var package in matchesOverMaxDistance.OrderBy(x => x.Item2)) {
-                        var t = package.Item2 / (float)maxDistance;
-                        sb.AppendLine($" - {package.Item1.packageId} ({Mathf.Clamp01(1f - t):P000})");
-                    }
-                }
-            }
-
-            Debug.Log(sb.ToString());
-
-            foreach (var package in exactMatches) {
-                yield return new FoundDllInfo(package, PackageMatchType.Exact);
-            }
-
-            foreach (var package in possibleMatches.Except(matchesOverMaxDistance).Select(x => x.Item1)) {
-                yield return new FoundDllInfo(package, PackageMatchType.Possible);
-            }
-
-            foreach (var package in matchesOverMaxDistance.Select(x => x.Item1)) {
-                yield return new FoundDllInfo(package, PackageMatchType.Improbable);
-            }
+            return -1;
         }
 #endif
     }
