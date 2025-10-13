@@ -12,7 +12,8 @@ namespace Nomnom.CodeGenUtils {
             var methodsToRemove = root.DescendantNodes()
                 .OfType<MethodDeclarationSyntax>()
                 .Where(m => m.Identifier.Text.StartsWith("__getTypeName") || m.Identifier.Text.StartsWith("__initializeVariables") ||
-                            m.Identifier.Text.StartsWith("InitializeRPCS_") || m.Identifier.Text.StartsWith("__rpc_handler_"));
+                            m.Identifier.Text.StartsWith("__initializeRpcs") || m.Identifier.Text.StartsWith("InitializeRPCS_") ||
+                            m.Identifier.Text.StartsWith("__rpc_handler_"));
             var newRoot = root.RemoveNodes(methodsToRemove, SyntaxRemoveOptions.KeepNoTrivia)!;
             return newRoot;
         }
@@ -138,6 +139,25 @@ namespace Nomnom.CodeGenUtils {
             }
         }
 
+        private static IEnumerable<StatementSyntax> TryUnwrapBlock(StatementSyntax syntax) {
+            if (syntax is BlockSyntax block) {
+                return block.Statements;
+            }
+            return new[] { syntax };
+        }
+
+        private static BlockSyntax MakeRPCMethodBody(IEnumerable<StatementSyntax> syntax, Action<string> log) {
+            var first = syntax.FirstOrDefault();
+            if (first != null && first.ToString() == "__rpc_exec_stage = __RpcExecStage.Send;") {
+                syntax = syntax.Skip(1);
+            }
+            return SyntaxFactory.Block(syntax);
+        }
+
+        private static BlockSyntax MakeRPCMethodBody(StatementSyntax syntax, Action<string> log) {
+            return MakeRPCMethodBody(new[] { syntax }, log);
+        }
+
         private static MethodDeclarationSyntax? HandleRpcFunction(MethodDeclarationSyntax methodDeclaration, Action<string> log) {
             var statements = methodDeclaration.Body?.Statements;
             if (statements is not { } validStatements) {
@@ -182,26 +202,19 @@ namespace Nomnom.CodeGenUtils {
                             .WithModifiers(methodDeclaration.Modifiers)
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
-                            .WithBody(SyntaxFactory.Block(strippedIfStatement));
+                            .WithBody(MakeRPCMethodBody(strippedIfStatement, log));
                         return newMethod;
                     } else {
                         var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
                             .WithModifiers(methodDeclaration.Modifiers)
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
-                            .WithBody(nestedNodeIf.Statement as BlockSyntax);
+                            .WithBody(MakeRPCMethodBody(((BlockSyntax)nestedNodeIf.Statement).Statements, log));
                         return newMethod;
                     }
                 } else {
-                    var thirdStatement = validStatements[3];
-                    if (thirdStatement is not IfStatementSyntax thirdStatementIf) {
-                        log($"[error] no thirdStatementIf");
-                        return null;
-                    }
-                
-                    // strip this if statement of the prefix info and keep the rest
-                    var strippedIfStatement = StripIfStatement(thirdStatementIf, log);
-                    log("<color=red>[error] not handled yet</color>");
+                    log($"[error] unexpected childNodes length = {childNodes.Length} for Count==2");
+                    return null;
                 }
             }
             /*
@@ -222,11 +235,10 @@ namespace Nomnom.CodeGenUtils {
              *      }
              *      if (__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost) || GameNetworkManager.Instance.localPlayerController == null || (playerWhoTriggered != -1 && (int)GameNetworkManager.Instance.localPlayerController.playerClientId == playerWhoTriggered))
              */
-            else {
-                var fourthStatement = validStatements[3];
-                if (fourthStatement is not IfStatementSyntax fourthStatementIf) {
+            else if (validStatements.Count >= 4) {
+                if (validStatements[3] is not IfStatementSyntax fourthStatementIf) {
                     log($"[error] no fourthStatementIf");
-                    return null;
+                    return methodDeclaration;
                 }
                 
                 var strippedIfStatement = StripIfStatement(fourthStatementIf, log);
@@ -236,64 +248,76 @@ namespace Nomnom.CodeGenUtils {
                         .WithModifiers(methodDeclaration.Modifiers)
                         .WithParameterList(methodDeclaration.ParameterList)
                         .WithAttributeLists(methodDeclaration.AttributeLists)
-                        .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements.Prepend(strippedIfStatement))));
+                        .WithBody(MakeRPCMethodBody(SyntaxFactory.List(remainingStatements.Prepend(strippedIfStatement)), log));
                     return newMethod;
                 } else {
                     var remainingStatements = validStatements.Skip(4).ToArray();
-                    
-                    // if is empty
                     if (fourthStatementIf.Statement.ChildNodes().FirstOrDefault() is ReturnStatementSyntax) {
                         var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
                             .WithModifiers(methodDeclaration.Modifiers)
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
-                            .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements)));
+                            .WithBody(MakeRPCMethodBody(SyntaxFactory.List(remainingStatements), log));
                         return newMethod;
                     } else {
                         var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
                             .WithModifiers(methodDeclaration.Modifiers)
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
-                            .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements).Prepend(fourthStatementIf.Statement)));
+                            .WithBody(MakeRPCMethodBody(TryUnwrapBlock(fourthStatementIf.Statement).Concat(remainingStatements), log));
                         return newMethod;
                     }
                 }
             }
 
-            return null;
+            log("[warn] unexpected RPC shape; leaving method unchanged");
+            return methodDeclaration;
         }
 
         private static IfStatementSyntax? StripIfStatement(IfStatementSyntax ifStatementSyntax, Action<string> log) {
-            var conditionString = ifStatementSyntax.Condition.ToString();
-            // log($"[from] \"{conditionString}\"");
-            foreach (var c in StripConditions) {
-                conditionString = conditionString.Replace(c, string.Empty).TrimStart();
-            }
-
-            // log($"[to1] \"{conditionString}\"");
-
-            if (string.IsNullOrEmpty(conditionString)) {
-                // empty if statement
-                // log("empty if statement!");
-                return null;
-            } else if (conditionString.StartsWith("||") || conditionString.StartsWith("&&")) {
-                conditionString = conditionString[2..].TrimStart();
-                ifStatementSyntax = SyntaxFactory.IfStatement(SyntaxFactory.ParseExpression(conditionString), ifStatementSyntax.Statement);
-            }
-            
-            // log($"[to2] \"{conditionString}\"");
-            
-            return ifStatementSyntax;
+            var stripped = StripIfStatementCondition(ifStatementSyntax, keepContent: true, log);
+            return stripped;
         }
 
-        private readonly static string[] StripConditions = {
-            "__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost)",
-            "__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost) || NetworkManager.Singleton == null",
-            "__rpc_exec_stage == __RpcExecStage.Client && (networkManager.IsClient || networkManager.IsHost)",
-            "__rpc_exec_stage != __RpcExecStage.Server || (!networkManager.IsServer && !networkManager.IsHost)",
-            "__rpc_exec_stage == __RpcExecStage.Server && (networkManager.IsServer || networkManager.IsHost)",
-            "__rpc_exec_stage == __RpcExecStage.Client && !networkManager.IsClient && networkManager.IsHost"
-        };
+        private static bool IsExecStageOrRoleCheck(ExpressionSyntax expr) {
+            var s = expr.ToString();
+            return s.Contains("__rpc_exec_stage")
+                || s.Contains(".IsServer") || s.Contains(".IsClient") || s.Contains(".IsHost")
+                || s.Contains("NetworkManager.Singleton")
+                || s.Contains("base.NetworkManager");
+        }
+
+        private static ExpressionSyntax? RemoveGuardTerms(ExpressionSyntax expr) {
+            expr = expr is ParenthesizedExpressionSyntax p ? p.Expression : expr;
+
+            if (expr is BinaryExpressionSyntax bin) {
+                if (bin.IsKind(SyntaxKind.LogicalAndExpression) || bin.IsKind(SyntaxKind.LogicalOrExpression)) {
+                    var left = RemoveGuardTerms(bin.Left);
+                    var right = RemoveGuardTerms(bin.Right);
+
+                    if (left == null && right == null) return null;
+                    if (left == null) return right;
+                    if (right == null) return left;
+
+                    return SyntaxFactory.BinaryExpression(bin.Kind(), left, bin.OperatorToken, right);
+                }
+
+                if (IsExecStageOrRoleCheck(expr)) return null;
+                return expr;
+            }
+
+            return IsExecStageOrRoleCheck(expr) ? null : expr;
+        }
+
+        private static IfStatementSyntax? StripIfStatementCondition(IfStatementSyntax ifStatementSyntax, bool keepContent, Action<string> log) {
+            var reduced = RemoveGuardTerms(ifStatementSyntax.Condition);
+
+            if (reduced == null) {
+                return null;
+            }
+
+            return SyntaxFactory.IfStatement(reduced, keepContent ? ifStatementSyntax.Statement : SyntaxFactory.Block(SyntaxFactory.ReturnStatement()));
+        }
     }
 
     public class RemoveCtorMethodCalls : CSharpSyntaxRewriter {
