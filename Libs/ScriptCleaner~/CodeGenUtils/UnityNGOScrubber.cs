@@ -104,6 +104,11 @@ namespace Nomnom.CodeGenUtils {
                         );
 
                         newCode = newCode.Replace(
+                            @"HUDManager.Instance.PTTIcon.enabled = IngamePlayerSettings.Instance.settings.micEnabled && !voiceChatModule.IsMuted;",
+                            @"// HUDManager.Instance.PTTIcon.enabled = IngamePlayerSettings.Instance.settings.micEnabled && !voiceChatModule.IsMuted;"
+                        );
+
+                        newCode = newCode.Replace(
                             @"voiceChatModule.IsMuted = !IngamePlayerSettings.Instance.settings.micEnabled;",
                             @"// voiceChatModule.IsMuted = !IngamePlayerSettings.Instance.settings.micEnabled;"
                         );
