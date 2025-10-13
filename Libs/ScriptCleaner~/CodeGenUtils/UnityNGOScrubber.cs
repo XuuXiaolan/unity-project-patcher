@@ -77,6 +77,10 @@ namespace Nomnom.CodeGenUtils {
                             }
 
                             if (newMethod != null) {
+                                newMethod = newMethod.NormalizeWhitespace("\t", "\r\n");
+                                newMethod = (MethodDeclarationSyntax)new IndentStatements(2).Visit(newMethod);
+                                newMethod = newMethod.WithLeadingTrivia(newMethod.GetLeadingTrivia().Prepend(SyntaxFactory.CarriageReturnLineFeed));
+                                newMethod = newMethod.WithTrailingTrivia(newMethod.GetTrailingTrivia().Append(SyntaxFactory.CarriageReturnLineFeed));
                                 // log($"[info] new method: {newMethod}");
                                 methodsToReplace.Add((methodDeclaration, newMethod));
                             }
@@ -303,6 +307,24 @@ namespace Nomnom.CodeGenUtils {
                 // Otherwise, keep the original node.
                 return base.VisitExpressionStatement(node);
             }
+        }
+    }
+
+    public class IndentStatements : CSharpSyntaxRewriter {
+        private int _depth = 0;
+        private bool _lastTokenHadNewline = true;
+
+        public IndentStatements(int depth) {
+            _depth = depth;
+        }
+
+        public override SyntaxToken VisitToken(SyntaxToken token) {
+            if (_lastTokenHadNewline) {
+                token = token.WithLeadingTrivia(token.LeadingTrivia.Concat(Enumerable.Repeat(SyntaxFactory.Tab, _depth)));
+            }
+
+            _lastTokenHadNewline = token.TrailingTrivia.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia));
+            return token;
         }
     }
 }
