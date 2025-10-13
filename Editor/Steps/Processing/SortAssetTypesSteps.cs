@@ -28,7 +28,7 @@ namespace Nomnom.UnityProjectPatcher.Editor.Steps {
         //     var settings = PatcherUtility.GetSettings();
         //     var arSettings = PatcherUtility.GetAssetRipperSettings();
         //     UnsortFolder(settings.ProjectGameAssetsPath, "MonoBehaviour", "ScriptableObject", arSettings);
-        //     UnsortFolder(settings.ProjectGameAssetsPath, "PrefabInstance", "Prefab", arSettings);
+        //     UnsortFolder(settings.ProjectGameAssetsPath, "GameObject", "Prefab", arSettings);
         // }
         
         public UniTask<StepResult> Run() {
@@ -63,8 +63,8 @@ namespace Nomnom.UnityProjectPatcher.Editor.Steps {
 
         private void SortPrefabs(UPPatcherSettings settings, AssetRipperSettings arSettings) {
             // collect all assets
-            if (!arSettings.TryGetFolderMapping("PrefabInstance", out var prefabFolder, out var exclude) || exclude) {
-                Debug.LogWarning("Could not find \"PrefabInstance\" folder mapping");
+            if (!arSettings.TryGetFolderMapping("GameObject", out var prefabFolder, out var exclude) || exclude) {
+                Debug.LogWarning("Could not find \"GameObject\" folder mapping");
                 return;
             }
             

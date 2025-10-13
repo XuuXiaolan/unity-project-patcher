@@ -46,7 +46,7 @@ namespace Nomnom.UnityProjectPatcher.Editor.Steps {
                 
                 // unsort folders so the path matching works properly
                 SortAssetTypesSteps.UnsortFolder(assetsPath, "MonoBehaviour", "ScriptableObject", arSettings);
-                SortAssetTypesSteps.UnsortFolder(assetsPath, "PrefabInstance", "Prefab", arSettings);
+                SortAssetTypesSteps.UnsortFolder(assetsPath, "GameObject", "Prefab", arSettings);
             } catch {
                 Debug.LogError("Failed to create default project paths");
                 throw;

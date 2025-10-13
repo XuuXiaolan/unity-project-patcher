@@ -16,7 +16,7 @@ namespace Nomnom.UnityProjectPatcher.AssetRipper {
     public class AssetRipperSettings : ScriptableObject {
 #if UNITY_EDITOR
         public string FolderPath => PatcherUtility.GetUserSettings().AssetRipperDownloadFolderPath;
-        public string ExePath => Path.Combine(FolderPath, "AssetRipper.Tools.SystemTester.exe");
+        public string ExePath => Path.Combine(FolderPath, "AssetRipper.Tools.CommandLineRipper.exe");
         public string OutputFolderPath => PatcherUtility.GetUserSettings().AssetRipperExportFolderPath;
         public string ConfigPath => Path.Combine(FolderPath, "AssetRipper.Settings.json");
         public string OutputExportFolderPath => Path.Combine(OutputFolderPath, "ExportedProject");
@@ -30,7 +30,7 @@ namespace Nomnom.UnityProjectPatcher.AssetRipper {
         public IReadOnlyList<string> FoldersToExcludeFromRead => _foldersToExcludeFromRead.Select(x => x.Replace('/', '\\')).ToList();
         public IReadOnlyList<string> ProjectSettingFilesToCopy => _projectSettingFilesToCopy.Select(x => x.Replace('/', '\\')).ToList();
         
-        const string defaultBuildUrl = "https://github.com/nomnomab/AssetRipper/releases/download/v1.0.12-patcher/Release.zip";
+        const string defaultBuildUrl = "https://github.com/Zaggy1024/AssetRipper/releases/download/1.3.4-cmd/Release.zip";
         public string BuildUrl => string.IsNullOrWhiteSpace(_customBuildUrl) ? defaultBuildUrl : _customBuildUrl;
         
         // public bool NeedsManualRip => _configurationData.Processing.enableStaticMeshSeparation;
@@ -45,10 +45,10 @@ namespace Nomnom.UnityProjectPatcher.AssetRipper {
             new FolderMapping(DefaultFolderMapping.AudioMixerControllerKey, DefaultFolderMapping.AudioMixerControllerKey, DefaultFolderMapping.AudioMixerControllerOutput),
             new FolderMapping(DefaultFolderMapping.EditorKey, DefaultFolderMapping.EditorKey, DefaultFolderMapping.EditorOutput),
             new FolderMapping(DefaultFolderMapping.FontKey, DefaultFolderMapping.FontKey, DefaultFolderMapping.FontOutput),
+            new FolderMapping(DefaultFolderMapping.GameObjectKey, DefaultFolderMapping.GameObjectKey, DefaultFolderMapping.GameObjectOutput),
             new FolderMapping(DefaultFolderMapping.LightingSettingsKey, DefaultFolderMapping.LightingSettingsKey, DefaultFolderMapping.LightingSettingsOutput),
             new FolderMapping(DefaultFolderMapping.MaterialKey, DefaultFolderMapping.MaterialKey, DefaultFolderMapping.MaterialOutput),
             new FolderMapping(DefaultFolderMapping.MeshKey, DefaultFolderMapping.MeshKey, DefaultFolderMapping.MeshOutput),
-            new FolderMapping(DefaultFolderMapping.PrefabInstanceKey, DefaultFolderMapping.PrefabInstanceKey, DefaultFolderMapping.PrefabInstanceOutput),
             new FolderMapping(DefaultFolderMapping.PhysicsMaterialKey, DefaultFolderMapping.PhysicsMaterialKey, DefaultFolderMapping.PhysicsMaterialOutput),
             new FolderMapping(DefaultFolderMapping.PluginsKey, DefaultFolderMapping.PluginsKey, DefaultFolderMapping.PluginsOutput),
             new FolderMapping(DefaultFolderMapping.ResourcesKey, DefaultFolderMapping.ResourcesKey, DefaultFolderMapping.ResourcesOutput),
@@ -77,10 +77,10 @@ namespace Nomnom.UnityProjectPatcher.AssetRipper {
             DefaultFolderMapping.AudioMixerControllerKey,
             DefaultFolderMapping.EditorKey,
             DefaultFolderMapping.FontKey,
+            DefaultFolderMapping.GameObjectKey,
             DefaultFolderMapping.LightingSettingsKey,
             DefaultFolderMapping.MaterialKey,
             DefaultFolderMapping.MeshKey,
-            DefaultFolderMapping.PrefabInstanceKey,
             DefaultFolderMapping.PhysicsMaterialKey,
             DefaultFolderMapping.PluginsKey,
             DefaultFolderMapping.ResourcesKey,
