@@ -4,8 +4,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using UnityEditor.PackageManager;
 using UnityEngine.Pool;
+
+#if UNITY_EDITOR
+using UnityEditor.PackageManager;
+#endif
 
 namespace Nomnom.UnityProjectPatcher.UnityPackages {
     public static class PackagesUtility {
