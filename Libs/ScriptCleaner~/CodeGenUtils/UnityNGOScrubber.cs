@@ -18,6 +18,31 @@ namespace Nomnom.CodeGenUtils {
             return newRoot;
         }
 
+        private static bool IsRpcAttribute(AttributeSyntax attribute) {
+            var attributeName = attribute.Name.ToString();
+            return attributeName == "ServerRpc"
+                || attributeName == "ClientRpc"
+                || attributeName == "Rpc"
+                || attributeName.EndsWith(".ServerRpc")
+                || attributeName.EndsWith(".ClientRpc")
+                || attributeName.EndsWith(".Rpc")
+                || attributeName.EndsWith("ServerRpcAttribute")
+                || attributeName.EndsWith("ClientRpcAttribute")
+                || attributeName.EndsWith("RpcAttribute");
+        }
+
+        private static bool HasGeneratedRpcInternals(MethodDeclarationSyntax methodDeclaration) {
+            var bodyText = methodDeclaration.Body?.ToString();
+            if (string.IsNullOrEmpty(bodyText)) {
+                return false;
+            }
+
+            return bodyText.Contains("__rpc_exec_stage")
+                && (bodyText.Contains("__beginSendRpc")
+                    || bodyText.Contains("__beginSendClientRpc")
+                    || bodyText.Contains("__beginSendServerRpc"));
+        }
+
         public static void ScrubDecompiledScript(string[] files, bool outputCopy, Action<string> log) {
             foreach (var file in files) {
                 try {
@@ -64,13 +89,11 @@ namespace Nomnom.CodeGenUtils {
                                 continue;
                             }
                             
-                            var serverRpcAttribute = attributes
-                                .FirstOrDefault(x => x.Name.ToString() == "ServerRpc");
-                            var clientRpcAttribute = attributes
-                                .FirstOrDefault(x => x.Name.ToString() == "ClientRpc");
+                            var hasRpcAttribute = attributes.Any(IsRpcAttribute);
+                            var hasGeneratedRpcInternals = HasGeneratedRpcInternals(methodDeclaration);
 
                             MethodDeclarationSyntax? newMethod = null;
-                            if (serverRpcAttribute != null || clientRpcAttribute != null) {
+                            if (hasRpcAttribute || hasGeneratedRpcInternals) {
                                 newMethod = HandleRpcFunction(methodDeclaration, log);
                             } else {
                                 // log("unknown function");
