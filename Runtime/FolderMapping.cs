@@ -36,6 +36,9 @@ namespace Nomnom.UnityProjectPatcher {
         public const string FontKey = "Font";
         public static readonly string FontOutput = Path.Combine("Fonts", "TextMeshPro");
         
+        public const string GameObjectKey = "GameObject";
+        public static readonly string GameObjectOutput = "Prefabs";
+        
         public const string LightingSettingsKey = "LightingSettings";
         public static readonly string LightingSettingsOutput = "LightingSettings";
         
@@ -44,9 +47,6 @@ namespace Nomnom.UnityProjectPatcher {
         
         public const string MeshKey = "Mesh";
         public static readonly string MeshOutput = "Meshes";
-        
-        public const string PrefabInstanceKey = "PrefabInstance";
-        public static readonly string PrefabInstanceOutput = "Prefabs";
         
         public const string PhysicsMaterialKey = "PhysicsMaterial";
         public static readonly string PhysicsMaterialOutput = "PhysicsMaterials";

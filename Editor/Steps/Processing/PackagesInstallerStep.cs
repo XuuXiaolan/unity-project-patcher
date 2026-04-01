@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -26,7 +26,7 @@ namespace Nomnom.UnityProjectPatcher.Editor.Steps {
             var packages = settings.ExactPackagesFound;
             var gitPackages = settings.GitPackages;
             var allPackages = packages
-                .Concat(gitPackages.Select(x => new FoundPackageInfo(x.version, null, null, PackageMatchType.Exact)))
+                .Concat(gitPackages.Select(x => new FoundDllInfo(x.version, null, null, PackageMatchType.Package)))
                 .ToArray();
             // var gitPackages = settings.GitPackages;
 
@@ -137,7 +137,7 @@ namespace Nomnom.UnityProjectPatcher.Editor.Steps {
             var settings = this.GetSettings();
             var packages = settings.ExactPackagesFound;
             var gitPackages = settings.GitPackages;
-            var allPackages = packages.Concat(gitPackages.Select(x => new FoundPackageInfo(x.name, x.version, null, PackageMatchType.Exact)));
+            var allPackages = packages.Concat(gitPackages.Select(x => new FoundDllInfo(x.name, x.version, null, PackageMatchType.Package)));
             
             var manifest = File.ReadAllText(manifestFile.ToValidPath());
             var manifestJson = JObject.Parse(manifest);

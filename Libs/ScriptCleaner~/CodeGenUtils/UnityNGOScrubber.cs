@@ -8,165 +8,39 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Nomnom.CodeGenUtils {
     public static class UnityNGOScrubber {
-        // ? most of this is from
-        // ? https://github.com/EvaisaDev/LethalCompanyProjectCleaner/blob/482b32ce17525512a1103c1e59afa9b33da1f00b/LethalCompanyProjectCleaner/Program.cs#L235
-        public static void Scrub(string[] files, Action<string> log) {
-            foreach (var file in files) {
-                if (!File.Exists(file)) {
-                    // log($"[error] File \"{file}\" does not exist");
-                    continue;
-                }
-                
-                var fileName = Path.GetFileNameWithoutExtension(file);
-                if (fileName == "UnitySourceGeneratedAssemblyMonoScriptTypes_v1") {
-                    File.Delete(file);
-                    continue;
-                }
-                
-                var text = File.ReadAllText(file);
-                if (fileName == "NfgoClient") {
-                    // go to line that is public NfgoClient([NotNull] NfgoCommsNetwork network)
-                    var index = text.IndexOf("public NfgoClient([NotNull] NfgoCommsNetwork network)", StringComparison.Ordinal);
-                    // does it contain base(network)
-                    if (text.IndexOf("base(network)", index, StringComparison.Ordinal) == -1) {
-                        // add base(network)
-                        var indexOfLastParenthesis = text.IndexOf(')', index);
-                        text = text.Insert(indexOfLastParenthesis + 1, " : base(network)");
-                    }
-                }
-                
-                var tree = CSharpSyntaxTree.ParseText(text);
-                var root = tree.GetRoot();
-                var methodsToRemove = root.DescendantNodes()
-                    .OfType<MethodDeclarationSyntax>()
-                    .Where(m => m.Identifier.Text.StartsWith("__getTypeName") || m.Identifier.Text.StartsWith("__initializeVariables") ||
-                                m.Identifier.Text.StartsWith("InitializeRPCS_") || m.Identifier.Text.StartsWith("__rpc_handler_"));
-
-                var newRoot = root.RemoveNodes(methodsToRemove, SyntaxRemoveOptions.KeepNoTrivia);
-                var classes = newRoot.DescendantNodes().OfType<ClassDeclarationSyntax>();
-
-                foreach (var classDeclaration in classes) {
-                    // check if the class implements INetworkSerializable or IAsyncStateMachine
-                    var implementedInterfaces = classDeclaration.DescendantNodes()
-                        .OfType<IdentifierNameSyntax>()
-                        .Select(x => x.Identifier.Text);
-
-                    var newClassDeclaration = classDeclaration;
-
-                    if (implementedInterfaces.Contains("INetworkSerializable")) {
-                        // check if the class has the NetworkSerialize method
-                        var hasNetworkSerialize = classDeclaration.DescendantNodes()
-                            .OfType<MethodDeclarationSyntax>()
-                            .Any(x => x.Identifier.Text == "NetworkSerialize");
-
-                        if (!hasNetworkSerialize) {
-                            // add the NetworkSerialize method
-                            var method = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword)), "NetworkSerialize")
-                                .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
-                                .WithTypeParameterList(
-                                    SyntaxFactory.TypeParameterList(SyntaxFactory.SingletonSeparatedList<TypeParameterSyntax>(SyntaxFactory.TypeParameter("T"))))
-                                .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList<ParameterSyntax>(SyntaxFactory
-                                    .Parameter(SyntaxFactory.Identifier("serializer")).WithType(SyntaxFactory.IdentifierName("BufferSerializer<T>")))))
-                                .WithBody(SyntaxFactory.Block(SyntaxFactory.SingletonList<StatementSyntax>(SyntaxFactory.ThrowStatement(SyntaxFactory
-                                    .ObjectCreationExpression(SyntaxFactory.IdentifierName("System.NotImplementedException"))
-                                    .WithArgumentList(SyntaxFactory.ArgumentList())))))
-                                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
-
-                            method = method.AddConstraintClauses(SyntaxFactory.TypeParameterConstraintClause("T")
-                                .WithConstraints(
-                                    SyntaxFactory.SingletonSeparatedList<TypeParameterConstraintSyntax>(
-                                        SyntaxFactory.TypeConstraint(SyntaxFactory.IdentifierName("IReaderWriter")))));
-
-                            newClassDeclaration = newClassDeclaration.AddMembers(method);
-                        }
-                    }
-
-                    if (implementedInterfaces.Contains("IAsyncStateMachine")) {
-                        // Check if the class has the MoveNext method
-                        var hasMoveNext = classDeclaration.DescendantNodes()
-                            .OfType<MethodDeclarationSyntax>()
-                            .Any(x => x.Identifier.Text == "MoveNext");
-
-                        if (!hasMoveNext) {
-                            // Add the MoveNext method
-                            var moveNextMethod = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword)), "MoveNext")
-                                .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
-                                .WithBody(SyntaxFactory.Block(SyntaxFactory.SingletonList<StatementSyntax>(SyntaxFactory.ThrowStatement(SyntaxFactory
-                                    .ObjectCreationExpression(SyntaxFactory.IdentifierName("System.NotImplementedException"))
-                                    .WithArgumentList(SyntaxFactory.ArgumentList())))))
-                                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
-
-                            newClassDeclaration = newClassDeclaration.AddMembers(moveNextMethod);
-                        }
-
-                        // Check if the class has the SetStateMachine method
-                        var hasSetStateMachine = classDeclaration.DescendantNodes()
-                            .OfType<MethodDeclarationSyntax>()
-                            .Any(x => x.Identifier.Text == "SetStateMachine");
-
-                        if (!hasSetStateMachine) {
-                            // Add the SetStateMachine method
-                            var setStateMachineMethod = SyntaxFactory
-                                .MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword)), "SetStateMachine")
-                                .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
-                                .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList<ParameterSyntax>(SyntaxFactory
-                                    .Parameter(SyntaxFactory.Identifier("stateMachine")).WithType(SyntaxFactory.IdentifierName("IAsyncStateMachine")))))
-                                .WithBody(SyntaxFactory.Block(SyntaxFactory.SingletonList<StatementSyntax>(SyntaxFactory.ThrowStatement(SyntaxFactory
-                                    .ObjectCreationExpression(SyntaxFactory.IdentifierName("System.NotImplementedException"))
-                                    .WithArgumentList(SyntaxFactory.ArgumentList())))))
-                                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
-
-                            newClassDeclaration = newClassDeclaration.AddMembers(setStateMachineMethod);
-                        }
-                    }
-
-                    newRoot = newRoot.ReplaceNode(classDeclaration, newClassDeclaration);
-                }
-
-                if (newRoot != null) {
-                    var rewriter = new RemoveCtorMethodCalls();
-                    newRoot = rewriter.Visit(newRoot);
-                }
-
-                var structs = newRoot.DescendantNodes()
-                    .OfType<StructDeclarationSyntax>()
-                    .ToList(); // Collect all struct declarations into a list
-
-                while (structs.Any(x => x.DescendantNodes().OfType<ConstructorDeclarationSyntax>().ToList().Count > 0)) {
-                    foreach (var structDeclaration in structs) {
-                        var constructors = structDeclaration.DescendantNodes()
-                            .OfType<ConstructorDeclarationSyntax>()
-                            .ToList(); // Collect all constructor declarations into a list
-
-                        var currentStruct = structDeclaration; // Keep track of the current struct
-
-                        foreach (var constructor in constructors) {
-                            var newStruct = currentStruct.RemoveNode(constructor, SyntaxRemoveOptions.KeepNoTrivia);
-                            newRoot = newRoot.ReplaceNode(currentStruct, newStruct);
-
-                            currentStruct = newStruct; // Update the current struct
-                        }
-                    }
-
-                    structs = newRoot.DescendantNodes()
-                        .OfType<StructDeclarationSyntax>()
-                        .ToList();
-                }
-                
-                var newCode = newRoot.ToFullString();
-
-                // write the new code back to the file
-                File.WriteAllText(file, newCode);
-            }
-        }
-
         private static SyntaxNode Scrub__rpcCalls(SyntaxNode root) {
             var methodsToRemove = root.DescendantNodes()
                 .OfType<MethodDeclarationSyntax>()
                 .Where(m => m.Identifier.Text.StartsWith("__getTypeName") || m.Identifier.Text.StartsWith("__initializeVariables") ||
-                            m.Identifier.Text.StartsWith("InitializeRPCS_") || m.Identifier.Text.StartsWith("__rpc_handler_"));
-            var newRoot = root.RemoveNodes(methodsToRemove, SyntaxRemoveOptions.KeepNoTrivia);
+                            m.Identifier.Text.StartsWith("__initializeRpcs") || m.Identifier.Text.StartsWith("InitializeRPCS_") ||
+                            m.Identifier.Text.StartsWith("__rpc_handler_"));
+            var newRoot = root.RemoveNodes(methodsToRemove, SyntaxRemoveOptions.KeepNoTrivia)!;
             return newRoot;
+        }
+
+        private static bool IsRpcAttribute(AttributeSyntax attribute) {
+            var attributeName = attribute.Name.ToString();
+            return attributeName == "ServerRpc"
+                || attributeName == "ClientRpc"
+                || attributeName == "Rpc"
+                || attributeName.EndsWith(".ServerRpc")
+                || attributeName.EndsWith(".ClientRpc")
+                || attributeName.EndsWith(".Rpc")
+                || attributeName.EndsWith("ServerRpcAttribute")
+                || attributeName.EndsWith("ClientRpcAttribute")
+                || attributeName.EndsWith("RpcAttribute");
+        }
+
+        private static bool HasGeneratedRpcInternals(MethodDeclarationSyntax methodDeclaration) {
+            var bodyText = methodDeclaration.Body?.ToString();
+            if (string.IsNullOrEmpty(bodyText)) {
+                return false;
+            }
+
+            return bodyText.Contains("__rpc_exec_stage")
+                && (bodyText.Contains("__beginSendRpc")
+                    || bodyText.Contains("__beginSendClientRpc")
+                    || bodyText.Contains("__beginSendServerRpc"));
         }
 
         public static void ScrubDecompiledScript(string[] files, bool outputCopy, Action<string> log) {
@@ -215,37 +89,23 @@ namespace Nomnom.CodeGenUtils {
                                 continue;
                             }
                             
-                            var serverRpcAttribute = attributes
-                                .FirstOrDefault(x => x.Name.ToString() == "ServerRpc");
-                            var clientRpcAttribute = attributes
-                                .FirstOrDefault(x => x.Name.ToString() == "ClientRpc");
+                            var hasRpcAttribute = attributes.Any(IsRpcAttribute);
+                            var hasGeneratedRpcInternals = HasGeneratedRpcInternals(methodDeclaration);
 
                             MethodDeclarationSyntax? newMethod = null;
-                            if (serverRpcAttribute != null) {
-                                // check if serverRpcAttribute has RequireOwnership = false
-                                // var hasRequireOwnershipFlag = serverRpcAttribute.ArgumentList?.Arguments
-                                //     .Any(x => x.NameEquals?.Name.ToString() == "RequireOwnership" && x.Expression.ToString() == "false") == true;
-
+                            if (hasRpcAttribute || hasGeneratedRpcInternals) {
                                 newMethod = HandleRpcFunction(methodDeclaration, log);
-
-                                // if (hasRequireOwnershipFlag) {
-                                //     //newMethod = HandleBranchedRpc(file, methodDeclaration, false, log);
-                                // } else {
-                                //     //newMethod = HandleServerRpc(file, methodDeclaration, log);
-                                // }
-                            } else if (clientRpcAttribute != null) {
-                                newMethod = HandleRpcFunction(methodDeclaration, log);
-                                // newMethod = HandleClientRpc(file, methodDeclaration, log);
                             } else {
                                 // log("unknown function");
                                 continue;
                             }
 
                             if (newMethod != null) {
+                                newMethod = newMethod.NormalizeWhitespace("\t", "\r\n");
+                                newMethod = (MethodDeclarationSyntax)new IndentStatements(2).Visit(newMethod);
+                                newMethod = newMethod.WithLeadingTrivia(newMethod.GetLeadingTrivia().Prepend(SyntaxFactory.CarriageReturnLineFeed));
+                                newMethod = newMethod.WithTrailingTrivia(newMethod.GetTrailingTrivia().Append(SyntaxFactory.CarriageReturnLineFeed));
                                 // log($"[info] new method: {newMethod}");
-
-                                // replace old method with new method
-                                // root = root.ReplaceNode(methodDeclaration, newMethod);
                                 methodsToReplace.Add((methodDeclaration, newMethod));
                             }
                         }
@@ -253,7 +113,7 @@ namespace Nomnom.CodeGenUtils {
 
                     // replace old methods with new methods
                     root = root.ReplaceNodes(methodsToReplace.Select(x => x.Item1), (x, y) => methodsToReplace.First(z => z.Item1 == x).Item2);
-                    root = root.RemoveNodes(nodesToRemove, SyntaxRemoveOptions.KeepNoTrivia);
+                    root = root.RemoveNodes(nodesToRemove, SyntaxRemoveOptions.KeepNoTrivia)!;
 
                     // write the new code back to the file
                     var newCode = root.ToFullString();
@@ -262,10 +122,14 @@ namespace Nomnom.CodeGenUtils {
                     var startOfRoundClass = root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault(x => x.Identifier.Text == "StartOfRound");
                     if (startOfRoundClass != null) {
                         // log($"[class] {startOfRoundClass.Identifier.Text}");
-                        // root = root.ReplaceNode(startOfRoundClass, CleanStartOfRound(startOfRoundClass, log));
                         newCode = newCode.Replace(
                             @"voiceChatModule.IsMuted = !IngamePlayerSettings.Instance.playerInput.actions.FindAction(""VoiceButton"").IsPressed() && !GameNetworkManager.Instance.localPlayerController.speakingToWalkieTalkie;",
                             @"// voiceChatModule.IsMuted = !IngamePlayerSettings.Instance.playerInput.actions.FindAction(""VoiceButton"").IsPressed() && !GameNetworkManager.Instance.localPlayerController.speakingToWalkieTalkie;"
+                        );
+
+                        newCode = newCode.Replace(
+                            @"HUDManager.Instance.PTTIcon.enabled = IngamePlayerSettings.Instance.settings.micEnabled && !voiceChatModule.IsMuted;",
+                            @"// HUDManager.Instance.PTTIcon.enabled = IngamePlayerSettings.Instance.settings.micEnabled && !voiceChatModule.IsMuted;"
                         );
 
                         newCode = newCode.Replace(
@@ -298,6 +162,25 @@ namespace Nomnom.CodeGenUtils {
             }
         }
 
+        private static IEnumerable<StatementSyntax> TryUnwrapBlock(StatementSyntax syntax) {
+            if (syntax is BlockSyntax block) {
+                return block.Statements;
+            }
+            return new[] { syntax };
+        }
+
+        private static BlockSyntax MakeRPCMethodBody(IEnumerable<StatementSyntax> syntax, Action<string> log) {
+            var first = syntax.FirstOrDefault();
+            if (first != null && first.ToString() == "__rpc_exec_stage = __RpcExecStage.Send;") {
+                syntax = syntax.Skip(1);
+            }
+            return SyntaxFactory.Block(syntax);
+        }
+
+        private static BlockSyntax MakeRPCMethodBody(StatementSyntax syntax, Action<string> log) {
+            return MakeRPCMethodBody(new[] { syntax }, log);
+        }
+
         private static MethodDeclarationSyntax? HandleRpcFunction(MethodDeclarationSyntax methodDeclaration, Action<string> log) {
             var statements = methodDeclaration.Body?.Statements;
             if (statements is not { } validStatements) {
@@ -307,9 +190,9 @@ namespace Nomnom.CodeGenUtils {
 
             /*
              * Example:
-             * 		NetworkManager networkManager = base.NetworkManager;
-		     *      if ((object)networkManager != null && networkManager.IsListening)
-		     *      {
+             *      NetworkManager networkManager = base.NetworkManager;
+             *      if ((object)networkManager != null && networkManager.IsListening)
+             *      {
              */
             if (validStatements.Count == 2) {
                 var secondStatement = validStatements[1];
@@ -322,7 +205,6 @@ namespace Nomnom.CodeGenUtils {
                 // foreach (var child in childNodes) {
                 //     log($"[child] is {child.GetType().FullName}: {child}");
                 // }
-
                 if (childNodes.Length > 1) {
                     var secondChildNode = childNodes[1];
                     childNodes = secondChildNode.ChildNodes().ToArray();
@@ -343,53 +225,43 @@ namespace Nomnom.CodeGenUtils {
                             .WithModifiers(methodDeclaration.Modifiers)
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
-                            .WithBody(SyntaxFactory.Block(strippedIfStatement));
-                    
+                            .WithBody(MakeRPCMethodBody(strippedIfStatement, log));
                         return newMethod;
                     } else {
                         var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
                             .WithModifiers(methodDeclaration.Modifiers)
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
-                            .WithBody(nestedNodeIf.Statement as BlockSyntax);
-                    
+                            .WithBody(MakeRPCMethodBody(((BlockSyntax)nestedNodeIf.Statement).Statements, log));
                         return newMethod;
                     }
                 } else {
-                    var thirdStatement = validStatements[3];
-                    if (thirdStatement is not IfStatementSyntax thirdStatementIf) {
-                        log($"[error] no thirdStatementIf");
-                        return null;
-                    }
-                
-                    // strip this if statement of the prefix info and keep the rest
-                    var strippedIfStatement = StripIfStatement(thirdStatementIf, log);
-                    log("<color=red>[error] not handled yet</color>");
+                    log($"[error] unexpected childNodes length = {childNodes.Length} for Count==2");
+                    return null;
                 }
-            } 
+            }
             /*
              * Example:
-             * 		NetworkManager networkManager = base.NetworkManager;
-		     *      if ((object)networkManager == null || !networkManager.IsListening)
-		     *      {
-			 *          return;
-		     *      }
-		     *      if (__rpc_exec_stage != __RpcExecStage.Client && (networkManager.IsServer || networkManager.IsHost))
-		     *      {
-			 *          ClientRpcParams clientRpcParams = default(ClientRpcParams);
-			 *          FastBufferWriter bufferWriter = __beginSendClientRpc(848048148u, clientRpcParams, RpcDelivery.Reliable);
-			 *          bufferWriter.WriteValueSafe(in setBool, default(FastBufferWriter.ForPrimitives));
-			 *          bufferWriter.WriteValueSafe(in playSecondaryAudios, default(FastBufferWriter.ForPrimitives));
-			 *          BytePacker.WriteValueBitPacked(bufferWriter, playerWhoTriggered);
-			 *          __endSendClientRpc(ref bufferWriter, 848048148u, clientRpcParams, RpcDelivery.Reliable);
-		     *      }
-		     *      if (__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost) || GameNetworkManager.Instance.localPlayerController == null || (playerWhoTriggered != -1 && (int)GameNetworkManager.Instance.localPlayerController.playerClientId == playerWhoTriggered))
+             *      NetworkManager networkManager = base.NetworkManager;
+             *      if ((object)networkManager == null || !networkManager.IsListening)
+             *      {
+             *          return;
+             *      }
+             *      if (__rpc_exec_stage != __RpcExecStage.Client && (networkManager.IsServer || networkManager.IsHost))
+             *      {
+             *          ClientRpcParams clientRpcParams = default(ClientRpcParams);
+             *          FastBufferWriter bufferWriter = __beginSendClientRpc(848048148u, clientRpcParams, RpcDelivery.Reliable);
+             *          bufferWriter.WriteValueSafe(in setBool, default(FastBufferWriter.ForPrimitives));
+             *          bufferWriter.WriteValueSafe(in playSecondaryAudios, default(FastBufferWriter.ForPrimitives));
+             *          BytePacker.WriteValueBitPacked(bufferWriter, playerWhoTriggered);
+             *          __endSendClientRpc(ref bufferWriter, 848048148u, clientRpcParams, RpcDelivery.Reliable);
+             *      }
+             *      if (__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost) || GameNetworkManager.Instance.localPlayerController == null || (playerWhoTriggered != -1 && (int)GameNetworkManager.Instance.localPlayerController.playerClientId == playerWhoTriggered))
              */
-            else {
-                var fourthStatement = validStatements[3];
-                if (fourthStatement is not IfStatementSyntax fourthStatementIf) {
+            else if (validStatements.Count >= 4) {
+                if (validStatements[3] is not IfStatementSyntax fourthStatementIf) {
                     log($"[error] no fourthStatementIf");
-                    return null;
+                    return methodDeclaration;
                 }
                 
                 var strippedIfStatement = StripIfStatement(fourthStatementIf, log);
@@ -399,348 +271,76 @@ namespace Nomnom.CodeGenUtils {
                         .WithModifiers(methodDeclaration.Modifiers)
                         .WithParameterList(methodDeclaration.ParameterList)
                         .WithAttributeLists(methodDeclaration.AttributeLists)
-                        .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements.Prepend(strippedIfStatement))));
-                    
+                        .WithBody(MakeRPCMethodBody(SyntaxFactory.List(remainingStatements.Prepend(strippedIfStatement)), log));
                     return newMethod;
                 } else {
                     var remainingStatements = validStatements.Skip(4).ToArray();
-                    
-                    // if is empty
                     if (fourthStatementIf.Statement.ChildNodes().FirstOrDefault() is ReturnStatementSyntax) {
                         var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
                             .WithModifiers(methodDeclaration.Modifiers)
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
-                            .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements)));
-
+                            .WithBody(MakeRPCMethodBody(SyntaxFactory.List(remainingStatements), log));
                         return newMethod;
                     } else {
                         var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
                             .WithModifiers(methodDeclaration.Modifiers)
                             .WithParameterList(methodDeclaration.ParameterList)
                             .WithAttributeLists(methodDeclaration.AttributeLists)
-                            .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements).Prepend(fourthStatementIf.Statement)));
-
+                            .WithBody(MakeRPCMethodBody(TryUnwrapBlock(fourthStatementIf.Statement).Concat(remainingStatements), log));
                         return newMethod;
                     }
-                    
-                    // if (remainingStatements.Length > 0 && fourthStatementIf.Statement is ReturnStatementSyntax) {
-                    //     var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
-                    //         .WithModifiers(methodDeclaration.Modifiers)
-                    //         .WithParameterList(methodDeclaration.ParameterList)
-                    //         .WithAttributeLists(methodDeclaration.AttributeLists)
-                    //         .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements)));
-                    //     return newMethod;
-                    // } else {
-                    //     var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
-                    //         .WithModifiers(methodDeclaration.Modifiers)
-                    //         .WithParameterList(methodDeclaration.ParameterList)
-                    //         .WithAttributeLists(methodDeclaration.AttributeLists)
-                    //         .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements).Prepend(fourthStatementIf.Statement)));
-                    //     
-                    //     return newMethod;
-                    // }
                 }
             }
 
-            return null;
+            log("[warn] unexpected RPC shape; leaving method unchanged");
+            return methodDeclaration;
         }
 
         private static IfStatementSyntax? StripIfStatement(IfStatementSyntax ifStatementSyntax, Action<string> log) {
-            var conditionString = ifStatementSyntax.Condition.ToString();
-            // log($"[from] \"{conditionString}\"");
-            foreach (var c in StripConditions) {
-                conditionString = conditionString.Replace(c, string.Empty).TrimStart();
-            }
-
-            // log($"[to1] \"{conditionString}\"");
-
-            if (string.IsNullOrEmpty(conditionString)) {
-                // empty if statement
-                // log("empty if statement!");
-                return null;
-            } else if (conditionString.StartsWith("||") || conditionString.StartsWith("&&")) {
-                conditionString = conditionString[2..].TrimStart();
-                ifStatementSyntax = SyntaxFactory.IfStatement(SyntaxFactory.ParseExpression(conditionString), ifStatementSyntax.Statement);
-            }
-            
-            // log($"[to2] \"{conditionString}\"");
-            
-            return ifStatementSyntax;
+            var stripped = StripIfStatementCondition(ifStatementSyntax, keepContent: true, log);
+            return stripped;
         }
 
-        private static MethodDeclarationSyntax? HandleServerRpc(string file, MethodDeclarationSyntax methodDeclaration, Action<string> log) {
-            var statements = methodDeclaration.Body?.Statements;
-            if (statements is not { } validStatements) {
-                log($"[error] ServerRpc method {methodDeclaration.Identifier.Text} in {file} has no statements");
-                return null;
-            }
-
-            // if (validStatements.Count < 4) {
-            //     log($"[error] ServerRpc method {methodDeclaration.Identifier.Text} in {file} has less than 4 statements");
-            //     return null;
-            // }
-
-            // var fourthStatement = validStatements[3];
-            // if (fourthStatement is IfStatementSyntax ifStatementSyntax) {
-            //     var condition = ifStatementSyntax.Condition.ToString();
-            //     if (condition.Contains("__rpc_exec_stage == __RpcExecStage.Server && (networkManager.IsServer || networkManager.IsHost)")) {
-            //         return HandleServerRpc_1(file, methodDeclaration, ifStatementSyntax, log);
-            //     } else if (condition.Contains("__rpc_exec_stage != __RpcExecStage.Server || (!networkManager.IsServer && !networkManager.IsHost)")) {
-            //         return HandleServerRpc_2(file, validStatements, methodDeclaration, ifStatementSyntax, log);
-            //     } else {
-            //         log($"[info] [ServerRpc3] found in {file}");
-            //         return null;
-            //     }
-            // } else {
-            //     log($"[info] [ServerRpc(RequireOwnership = false)] found in {file}");
-            // }
-
-            // return null;
-            return HandleBranchedRpc(file, methodDeclaration, false, log);
+        private static bool IsExecStageOrRoleCheck(ExpressionSyntax expr) {
+            var s = expr.ToString();
+            return s.Contains("__rpc_exec_stage")
+                || s.Contains(".IsServer") || s.Contains(".IsClient") || s.Contains(".IsHost")
+                || s.Contains("NetworkManager.Singleton")
+                || s.Contains("base.NetworkManager");
         }
 
-        private static MethodDeclarationSyntax HandleServerRpc_1(string file, MethodDeclarationSyntax methodDeclaration, IfStatementSyntax ifStatementSyntax, Action<string> log) {
-            // HandleServerRpc(statements, log);
-            log($"[info] [ServerRpc1] found in {file}");
+        private static ExpressionSyntax? RemoveGuardTerms(ExpressionSyntax expr) {
+            expr = expr is ParenthesizedExpressionSyntax p ? p.Expression : expr;
 
-            // get contents of statement
-            var contents = ifStatementSyntax.Statement;
+            if (expr is BinaryExpressionSyntax bin) {
+                if (bin.IsKind(SyntaxKind.LogicalAndExpression) || bin.IsKind(SyntaxKind.LogicalOrExpression)) {
+                    var left = RemoveGuardTerms(bin.Left);
+                    var right = RemoveGuardTerms(bin.Right);
 
-            // only use this statement
-            var newStatements = SyntaxFactory.List(new[] { contents });
+                    if (left == null && right == null) return null;
+                    if (left == null) return right;
+                    if (right == null) return left;
 
-            // create new method
-            var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
-                .WithModifiers(methodDeclaration.Modifiers)
-                .WithParameterList(methodDeclaration.ParameterList)
-                .WithAttributeLists(methodDeclaration.AttributeLists)
-                .WithBody(SyntaxFactory.Block(newStatements));
-            
-            log($"[info] new method: {newMethod}");
-            return newMethod;
-        }
-        
-        private static MethodDeclarationSyntax HandleServerRpc_2(string file, SyntaxList<StatementSyntax> validStatements, MethodDeclarationSyntax methodDeclaration, IfStatementSyntax ifStatementSyntax, Action<string> log) {
-            log($"[info] [ServerRpc2] found in {file}");
-            
-            // get the rest of the statements
-            var restOfStatements = validStatements.Skip(4).ToList();
-            // foreach (var statement in restOfStatements) {
-            //     log($"[info] [ServerRpc2] rest of statements: {statement}");
-            // }
-
-            var newIfStatement = StripIfStatementCondition(ifStatementSyntax, false, log);
-            var newStatements = restOfStatements.Prepend(newIfStatement).Where(x => x != null).Cast<StatementSyntax>().ToArray();
-            var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
-                .WithModifiers(methodDeclaration.Modifiers)
-                .WithParameterList(methodDeclaration.ParameterList)
-                .WithAttributeLists(methodDeclaration.AttributeLists)
-                .WithBody(SyntaxFactory.Block(newStatements));
-            
-            log($"[info] new method: {newMethod}");
-            return newMethod;
-        }
-
-        private static MethodDeclarationSyntax? HandleBranchedRpc(string file, MethodDeclarationSyntax methodDeclaration, bool isClientRpc, Action<string> log) {
-            var statements = methodDeclaration.Body?.Statements;
-            if (statements is not { } validStatements) {
-                log($"[error] Rpc method {methodDeclaration.Identifier.Text} in {file} has no statements");
-                return null;
-            }
-            
-            foreach (var statement in validStatements) {
-                log($"[info] Rpc statement is {statement.GetType().FullName}: {statement.ToFullString()}");
-            }
-            
-            // there are two situations, all nested within one if statement
-            // or split into four statements
-
-            StatementSyntax[] remainingStatements;
-            if (validStatements.Count > 2) {
-                // firstStatement = validStatements[3];
-                remainingStatements = validStatements.Skip(3).ToArray();
-
-                var ifStatement = (IfStatementSyntax)remainingStatements[0];
-                // log($"[condition] {ifStatement.ToString()}");
-                
-                // first will be the final rpc statement, grab the remaining conditions
-                var newIfStatement = StripIfStatementCondition(ifStatement, isClientRpc, log);
-                if (newIfStatement == null) {
-                    if (newIfStatement?.Statement.ChildNodes().Count() == 1 && newIfStatement.Statement.ChildNodes().First() is ReturnStatementSyntax) {
-                        remainingStatements = remainingStatements[1..];
-                    } else {
-                        remainingStatements[0] = ifStatement.Statement;
-                    }
-                } else {
-                    remainingStatements[0] = newIfStatement;
+                    return SyntaxFactory.BinaryExpression(bin.Kind(), left, bin.OperatorToken, right);
                 }
-            } else {
-                log("nested");
-                var firstStatement = (IfStatementSyntax)validStatements[1];    
-                var newIfStatement = StripIfStatementCondition(firstStatement, isClientRpc, log);
-                if (newIfStatement == null) {
-                    firstStatement = (IfStatementSyntax)firstStatement.ChildNodes().ElementAt(1);
-                    remainingStatements = new[] { firstStatement.Statement };
-                } else {
-                    remainingStatements = new[] { newIfStatement };
-                }
-                
-                // var body = newIfStatement.Statement;
-                // var childNodes = body.ChildNodes().ToArray();
-                //
-                // if (childNodes.Length < 2) {
-                //     log($"[error] Rpc method {methodDeclaration.Identifier.Text} in {file} has less than 2 statements");
-                //     return null;
-                // }
-                //
-                // firstStatement = ((IfStatementSyntax)childNodes[1]).Statement;
-                // remainingStatements = new[] { firstStatement };
-            }
-            
-            // var statementType = validStatements.Count > 2 ? "// Multiple statements" : "// Nested if statement";
-            // if (remainingStatements.Length != 0) {
-            //     remainingStatements[0] = remainingStatements[0].WithLeadingTrivia(SyntaxFactory.Comment(statementType), SyntaxFactory.CarriageReturnLineFeed)
-            //         .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed);
-            //     foreach (var statement in remainingStatements) {
-            //         foreach (var node in statement.ChildNodes()) {
-            //             log($"[info] Rpc final body node is {node.GetType().FullName}: {node.ToFullString()}");
-            //         }
-            //     }
-            // } else {
-            //     log($"[info] Rpc final body is empty");
-            // }
 
-            // create new method
-            var newMethod = SyntaxFactory.MethodDeclaration(methodDeclaration.ReturnType, methodDeclaration.Identifier)
-                .WithModifiers(methodDeclaration.Modifiers)
-                .WithParameterList(methodDeclaration.ParameterList)
-                .WithAttributeLists(methodDeclaration.AttributeLists)
-                .WithBody(SyntaxFactory.Block(SyntaxFactory.List(remainingStatements)));
-            
-            log($"[info] new method: {newMethod}");
-            return newMethod;
+                if (IsExecStageOrRoleCheck(expr)) return null;
+                return expr;
+            }
+
+            return IsExecStageOrRoleCheck(expr) ? null : expr;
         }
-
-        private static MethodDeclarationSyntax? HandleClientRpc(string file, MethodDeclarationSyntax methodDeclaration, Action<string> log) {
-            var statements = methodDeclaration.Body?.Statements;
-            if (statements is not { } validStatements) {
-                log($"[error] ClientRpc method {methodDeclaration.Identifier.Text} in {file} has no statements");
-                return null;
-            }
-
-            if (validStatements.Count < 2) {
-                log($"[error] ClientRpc method {methodDeclaration.Identifier.Text} in {file} has less than 2 statements");
-                return null;
-            }
-
-            // IfStatementSyntax ifStatement;
-            // if (validStatements.Count == 2) {
-            //     ifStatement = (IfStatementSyntax)validStatements[1];
-            // } else {
-            //     ifStatement = (IfStatementSyntax)validStatements[3];
-            // }
-            
-            // var condition = ifStatement.Condition.ToString();
-            return HandleBranchedRpc(file, methodDeclaration, true, log);
-            // if (condition.Contains(
-            //         "__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost) || NetworkManager.Singleton == null")) {
-            //     return HandleBranchedRpc(file,
-            //         methodDeclaration,
-            //         true,
-            //         log);
-            // } else if (condition.Contains("__rpc_exec_stage == __RpcExecStage.Client && (networkManager.IsClient || networkManager.IsHost)")) {
-            //     return HandleBranchedRpc(file,
-            //         methodDeclaration,
-            //         true,
-            //         log);
-            // } else {
-            //     return HandleBranchedRpc(file,
-            //         methodDeclaration,
-            //         null,
-            //         true,
-            //         log);
-            // }
-        }
-
-        private readonly static string[] StripConditions = {
-            "__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost)",
-            "__rpc_exec_stage != __RpcExecStage.Client || (!networkManager.IsClient && !networkManager.IsHost) || NetworkManager.Singleton == null",
-            "__rpc_exec_stage == __RpcExecStage.Client && (networkManager.IsClient || networkManager.IsHost)",
-            "__rpc_exec_stage != __RpcExecStage.Server || (!networkManager.IsServer && !networkManager.IsHost)",
-            "__rpc_exec_stage == __RpcExecStage.Server && (networkManager.IsServer || networkManager.IsHost)",
-            "__rpc_exec_stage == __RpcExecStage.Client && !networkManager.IsClient && networkManager.IsHost"
-        };
 
         private static IfStatementSyntax? StripIfStatementCondition(IfStatementSyntax ifStatementSyntax, bool keepContent, Action<string> log) {
-            var actualCondition = ifStatementSyntax.Condition;
-            var conditionString = actualCondition.ToString();
+            var reduced = RemoveGuardTerms(ifStatementSyntax.Condition);
 
-            foreach (var c in StripConditions) {
-                conditionString = conditionString.Replace(c, string.Empty).TrimStart();
-            }
-            
-            log($"[new condition1] \"{conditionString}\"");
-
-            if (!string.IsNullOrEmpty(conditionString) && (conditionString.StartsWith("||") || conditionString.StartsWith("&&"))) {
-                conditionString = conditionString[2..].TrimStart();
-            }
-            
-            log($"[new condition2] \"{conditionString}\"");
-            
-            var newIfStatement = SyntaxFactory.IfStatement(
-                SyntaxFactory.ParseExpression(conditionString),
-                keepContent ? ifStatementSyntax.Statement : SyntaxFactory.Block(SyntaxFactory.ReturnStatement())
-            );
-
-            if (string.IsNullOrEmpty(newIfStatement.Condition.ToString())) {
+            if (reduced == null) {
                 return null;
             }
 
-            return newIfStatement;
+            return SyntaxFactory.IfStatement(reduced, keepContent ? ifStatementSyntax.Statement : SyntaxFactory.Block(SyntaxFactory.ReturnStatement()));
         }
-
-        // private static ClassDeclarationSyntax CleanStartOfRound(ClassDeclarationSyntax startOfRoundClass, Action<string> log) {
-        //     log($"[class] {startOfRoundClass.Identifier.Text}");
-        //     
-        //     // get update function
-        //     var methods = startOfRoundClass.DescendantNodes().OfType<MemberDeclarationSyntax>().ToArray();
-        //     var updateFunction = methods.Where(x => x is MethodDeclarationSyntax).Cast<MethodDeclarationSyntax>().First(x => x.Identifier.Text == "Update");
-        //     
-        //     log($"[update] {updateFunction}");
-        //     
-        //     // foreach (var method in methods) {
-        //     //     log($"[method] {method}");
-        //     // }
-        //     
-        //     // go through all the lines in the function and comment out any that start with voiceChatModule
-        //     // all lines recursively
-        //     var newStatements = new List<StatementSyntax>();
-        //     foreach (var statement in updateFunction.Body!.Statements) {
-        //         if (statement is ExpressionStatementSyntax expressionStatement) {
-        //             var expression = expressionStatement.Expression;
-        //             if (expression is InvocationExpressionSyntax invocationExpression) {
-        //                 var expressionString = invocationExpression.Expression.ToString();
-        //                 if (expressionString.StartsWith("voiceChatModule")) {
-        //                     newStatements.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.ParseExpression($"// {expressionStatement}")));
-        //                 } else {
-        //                     newStatements.Add(expressionStatement);
-        //                 }
-        //             } else {
-        //                 newStatements.Add(expressionStatement);
-        //             }
-        //         } else {
-        //             newStatements.Add(statement);
-        //         }
-        //     }
-        //     
-        //     // create new update function
-        //     var newUpdateFunction = updateFunction.WithBody(SyntaxFactory.Block(newStatements));
-        //     
-        //     // replace old update function with new update function
-        //     var newStartOfRoundClass = startOfRoundClass.ReplaceNode(updateFunction, newUpdateFunction);
-        //     return newStartOfRoundClass;
-        // }
     }
 
     public class RemoveCtorMethodCalls : CSharpSyntaxRewriter {
@@ -753,6 +353,24 @@ namespace Nomnom.CodeGenUtils {
                 // Otherwise, keep the original node.
                 return base.VisitExpressionStatement(node);
             }
+        }
+    }
+
+    public class IndentStatements : CSharpSyntaxRewriter {
+        private int _depth = 0;
+        private bool _lastTokenHadNewline = true;
+
+        public IndentStatements(int depth) {
+            _depth = depth;
+        }
+
+        public override SyntaxToken VisitToken(SyntaxToken token) {
+            if (_lastTokenHadNewline) {
+                token = token.WithLeadingTrivia(token.LeadingTrivia.Concat(Enumerable.Repeat(SyntaxFactory.Tab, _depth)));
+            }
+
+            _lastTokenHadNewline = token.TrailingTrivia.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia));
+            return token;
         }
     }
 }

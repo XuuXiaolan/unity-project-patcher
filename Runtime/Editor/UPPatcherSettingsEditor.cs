@@ -1,4 +1,4 @@
-﻿#if UNITY_EDITOR && UNITY_2020_3_OR_NEWER
+#if UNITY_EDITOR && UNITY_2020_3_OR_NEWER
 using System;
 using System.IO;
 using EditorAttributes;
@@ -26,19 +26,15 @@ namespace Nomnom.UnityProjectPatcher {
             }
             
             _exactPackagesFound.Clear();
-            _possiblePackagesFound.Clear();
-            _improbablePackagesFound.Clear();
+            _dllsToCopy.Clear();
 
             foreach (var package in PackagesUtility.GetGamePackages(this)) {
                 switch (package.matchType) {
-                    case PackageMatchType.Exact:
+                    case PackageMatchType.Package:
                         _exactPackagesFound.Add(package);
                         break;
-                    case PackageMatchType.Possible:
-                        _possiblePackagesFound.Add(package);
-                        break;
-                    case PackageMatchType.Improbable:
-                        _improbablePackagesFound.Add(package);
+                    case PackageMatchType.DLL:
+                        _dllsToCopy.Add(new FolderMapping("", package.name, ""));
                         break;
                 }
             }
